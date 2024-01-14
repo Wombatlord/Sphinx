@@ -98,13 +98,13 @@ fn main() {
         r: xxx[3],
     };
 
-    let b2_r1: u64 = x.round_fn(false, 3 as u64);
+    let b2_r1: u64 = x.round_fn(false, 1 as u64);
     let mut xored: u64 = b2_r1 ^ x.l;
 
     x.l = x.r;
     x.r = xored;
 
-    let b2_r2: u64 = x.round_fn(true, 4 as u64);
+    let b2_r2: u64 = x.round_fn(true, 2 as u64);
     xored = b2_r2 ^ x.r;
 
     x.r = x.l;
@@ -136,12 +136,12 @@ fn main() {
     };
 
     // un-cryptin'
-    let undo_r4: u64 = x.round_fn(false, 4);
+    let undo_r4: u64 = x.round_fn(false, 2);
     let mut unxored: u64 = undo_r4 ^ x.l;
     x.l = x.r;
     x.r = unxored;
 
-    let undo_r3: u64 = x.round_fn(true, 3);
+    let undo_r3: u64 = x.round_fn(true, 1);
     unxored = undo_r3 ^ x.r;
 
     x.r = x.l;
