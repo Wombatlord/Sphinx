@@ -9,15 +9,12 @@ pub fn file_shenanigans(path: &str) -> Vec<u8> {
     return f;
 }
 
-pub fn output_to_file(blocks: &Vec<Block>, path: &str, encrypting: bool) {
-    let mut v = vec![];
+pub fn output_to_file(blocks: &Vec<Block>, path: &str, decrypting: bool) {
+    let mut v: Vec<u8> = vec![];
     for bl in blocks {
-        let l = bytes_of(&bl.l);
-        let r = bytes_of(&bl.r);
-        v.push(l);
-        v.push(r);
+        v.extend(bytes_of(&bl.l));
+        v.extend(bytes_of(&bl.r));
     }
-    let v2 = v.as_slice();
 
     let mut file = OpenOptions::new()
         .create(true)
@@ -27,13 +24,11 @@ pub fn output_to_file(blocks: &Vec<Block>, path: &str, encrypting: bool) {
         .expect("oh boy");
     
     
-    if encrypting {
-        let s = String::from_utf8(v.concat()).expect("gosh darnit");
+    if decrypting {
+        let s = String::from_utf8(v).expect("gosh darnit");
         let ss = s.trim_matches(char::from(0));
         write!(file, "{ss}").expect("dagnabbit");
     } else {
-        for i in 0..v2.len() {
-            file.write_all(v2[i]).expect("uh oh spaghettios");
-        }
+        file.write_all(&v).expect("uh oh spaghettios");
     }
 }

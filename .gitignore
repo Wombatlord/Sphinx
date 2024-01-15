@@ -1,4 +1,4 @@
 /target
-as_bytes.txt
-decrypted.txt
+encrypted_file
+decrypted_file
 input.txt
