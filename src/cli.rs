@@ -1,7 +1,6 @@
 use clap::Parser;
 
-const LONG: &str = 
-    "A Feistel Cipher implementation.
+const LONG: &str = "A Feistel Cipher implementation.
     Encrypt will take an input file and encrypt it with the cipher
     Output will be saved as 'encrypted_file'.\n
     Decrypt will take an input file and decrypt it.
@@ -18,5 +17,5 @@ pub struct Args {
     pub decrypt: Option<String>,
 
     #[arg(short, long, value_name = "secret key")]
-    pub key: String
+    pub key: String,
 }

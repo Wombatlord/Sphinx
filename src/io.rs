@@ -22,8 +22,7 @@ pub fn output_to_file(blocks: &Vec<Block>, path: &str, decrypting: bool) {
         .write(true)
         .open(path)
         .expect("oh boy");
-    
-    
+
     if decrypting {
         let s = String::from_utf8(v).expect("gosh darnit");
         let ss = s.trim_matches(char::from(0));
