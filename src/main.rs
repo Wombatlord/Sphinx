@@ -4,10 +4,15 @@ mod io;
 
 use argon2::Argon2;
 use block::Block;
+use bytemuck::bytes_of;
 use clap::Parser;
 use cli::Args;
-use io::{file_shenanigans, output_to_file};
-use std::{collections::VecDeque, fs::read_to_string, str::from_utf8};
+use io::output_to_file;
+use std::{
+    collections::VecDeque,
+    fs::{self, read},
+    str::from_utf8,
+};
 
 fn u8_slice_to_u64(s: &[u8]) -> u64 {
     let mut buf = [0u8; 8];
@@ -16,27 +21,48 @@ fn u8_slice_to_u64(s: &[u8]) -> u64 {
     u64::from_ne_bytes(buf)
 }
 
-fn padding(pt: String) -> Vec<u8> {
-    let mut ptb: Vec<u8> = pt.as_bytes().to_vec();
+fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
     let mut pt_vec: Vec<u8> = vec![];
     let padding_required: usize = pt.len() % 8;
 
     if padding_required > 0 {
-        let space: &[u8] = " ".as_bytes();
+        println!("pad: {0}", 8 - padding_required);
+        let space: u8 = 8 - padding_required as u8;
         for _ in 0..(8 - padding_required) {
-            pt_vec.push(space[0]);
+            pt_vec.push(space);
         }
-        ptb.extend(pt_vec.into_iter());
+        pt.extend(pt_vec.into_iter());
     }
 
-    return ptb;
+    return pt;
+}
+
+fn strip_padding(block: Block) -> Vec<u8> {
+    // https://www.cryptosys.net/pki/manpki/pki_paddingschemes.html PKCS5
+    let mut maybe_padded_l = bytes_of(&block.l).to_vec();
+    let padding_amount_l = maybe_padded_l[maybe_padded_l.len() - 1];
+    let b = maybe_padded_l.len() as u8 - padding_amount_l;
+
+    for _ in b..maybe_padded_l.len() as u8 {
+        maybe_padded_l.pop();
+    }
+
+    let mut maybe_padded_r = bytes_of(&block.r).to_vec();
+    let padding_amount_r = maybe_padded_r[maybe_padded_r.len() - 1];
+    let b = maybe_padded_r.len() as u8 - padding_amount_r;
+
+    for _ in b..maybe_padded_r.len() as u8 {
+        maybe_padded_r.pop();
+    }
+
+    maybe_padded_l.extend(maybe_padded_r);
+
+    maybe_padded_l
 }
 
 fn pack_u8s_to_u64(padded_pt_vec: Vec<u8>, u64_vec: &mut VecDeque<u64>) {
-    for (i, _) in padded_pt_vec.iter().enumerate().step_by(8) {
-        // Take 8 bytes at a time from the byte slice of the plain text input
-        let m: &[u8] = &padded_pt_vec[i..i + 8];
-
+    // Take 8 bytes at a time from the byte slice of the plain text input
+    for m in padded_pt_vec.chunks(8) {
         // convert 8 bytes to a u64 representation
         let as64: u64 = u8_slice_to_u64(m);
 
@@ -49,7 +75,7 @@ fn ensure_block_pairs(u64_vec: &mut VecDeque<u64>) {
     // Block.l and Block.r must both contain a u64,
     // If u64_vec is not divisible by 2, we need a "null" u64 to pair with the final Block.l
     if u64_vec.len() % 2 != 0 {
-        let pad_u64: u64 = u8_slice_to_u64(&[0u8; 8]);
+        let pad_u64: u64 = u8_slice_to_u64(&[8u8; 8]);
         u64_vec.push_back(pad_u64);
     }
 }
@@ -57,59 +83,73 @@ fn ensure_block_pairs(u64_vec: &mut VecDeque<u64>) {
 // KEY STUFF
 // https://docs.rs/pbkdf2/latest/pbkdf2/
 // https://crates.io/crates/hkdf
-// 
+//
 // gen key with one of these, then bit rotate the key by the round?
 // https://levelup.gitconnected.com/learning-rust-rolling-bits-53b6b3b20d02
-// 
+//
 // https://github.com/mikepound/feistel/blob/master/feistel.py
 //
 
 fn main() {
     let args = Args::parse();
 
-    let mut output_key_material = derive_key(&args);
+    let output_key_material: [u8; 32] = derive_key::<32>(&args);
 
     if let Some(path) = args.encrypt.as_deref() {
         encrypt(path, &output_key_material);
     }
-
     if let Some(path) = args.decrypt.as_deref() {
-        output_key_material.reverse();
         let dec_blocks = decrypt(path, &output_key_material);
 
-        let mut final_dec = vec![];
-        for bl in dec_blocks {
-            let l = u64::to_ne_bytes(bl.l);
-            let r = u64::to_ne_bytes(bl.r);
-            final_dec.push(l);
-            final_dec.push(r);
+        // This is only terminal output related
+        if args.verbose {
+            let mut final_dec = vec![];
+            for bl in dec_blocks {
+                let l = u64::to_ne_bytes(bl.l);
+                let r = u64::to_ne_bytes(bl.r);
+                final_dec.push(l);
+                final_dec.push(r);
+            }
+            let f = final_dec.concat();
+            println!("Decrypted:\t{0}", from_utf8(&f).unwrap())
         }
-        let f = final_dec.concat();
-
-        println!("Decrypted:\t{0}", from_utf8(&f).unwrap())
     }
-
-    // terminal output
 }
 
-fn derive_key(args: &Args) -> [u8; 32] {
+fn derive_key<const B: usize>(args: &Args) -> [u8; B] {
     let password = args.key.as_bytes();
     let salt = b"example salt"; // Salt should be unique per password
 
-    let mut output_key_material = [0u8; 32]; // Can be any desired size
+    let mut output_key_material = [0u8; B]; // Can be any desired size
 
     Argon2::default()
         .hash_password_into(password, salt, &mut output_key_material)
         .expect("argon broke dawg");
+
+    println!("{output_key_material:?}");
     output_key_material
 }
 
-fn decrypt(path: &str, key: &[u8]) -> Vec<Block> {
+fn key_slice(u64_encoded: &VecDeque<u64>, key: &[u8; 32]) -> (usize, Vec<u8>) {
+    let required_blocks = u64_encoded.len() / 2;
+
+    let kk = match required_blocks < key.len() {
+        true => key[..required_blocks].to_vec(),
+        false => key.to_vec(),
+    };
+
+    (required_blocks, kk)
+}
+
+fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
     // deserialise cyphertext
-    let bytes_from_ct_file = file_shenanigans(path);
+    let bytes_from_ct_file = read(path).unwrap();
     let mut u64_encoded: VecDeque<u64> = vec![].into();
     pack_u8s_to_u64(bytes_from_ct_file, &mut u64_encoded);
-    let required_blocks = u64_encoded.len() / 2;
+
+    //key prep
+    let (required_blocks, kk) = key_slice(&u64_encoded, key);
+    // println!("{kk:?}");
 
     // un-cryptin'
     let mut dec_blocks: Vec<Block> = vec![];
@@ -117,39 +157,49 @@ fn decrypt(path: &str, key: &[u8]) -> Vec<Block> {
         let x = Block {
             l: u64_encoded.pop_front().unwrap(),
             r: u64_encoded.pop_front().unwrap(),
+            stripped: 0,
         };
 
         dec_blocks.push(x)
     }
 
     // let key = [6u64, 5, 4, 3, 2, 1];
-    for block in 0..dec_blocks.len() {
-        dec_blocks[block].run_n_rounds(0, key.len() - 1, &key, true);
+    for idx in 0..dec_blocks.len() {
+        let block_key = kk[idx % kk.len()];
+        dec_blocks[idx].run_n_rounds(4, block_key, false);
     }
-    output_to_file(&dec_blocks, "decrypted_file", true);
+    let stripped = strip_padding(dec_blocks[dec_blocks.len() - 1]);
+    output_to_file(&mut dec_blocks, Some(stripped), "decrypted_file");
     dec_blocks
 }
 
-fn encrypt(path: &str, key: &[u8]) {
-    let plain_text3: String = read_to_string(path).unwrap();
-    let padded = padding(plain_text3);
+fn encrypt(path: &str, key: &[u8; 32]) {
+    // let plain_text3: String = read_to_string(path).unwrap();
+
+    let pt = fs::read(path).unwrap();
+
+    let padded = pad_bytes(pt);
     let mut u64_encoded: VecDeque<u64> = vec![].into();
 
     pack_u8s_to_u64(padded, &mut u64_encoded);
     ensure_block_pairs(&mut u64_encoded);
 
+    // key prep
+    let (_, kk) = key_slice(&u64_encoded, key);
+    println!("{kk:?}");
+
     // cryptin'
     let mut enc_blocks: Vec<Block> = vec![];
 
     while let (Some(l), Some(r)) = (u64_encoded.pop_front(), u64_encoded.pop_front()) {
-        enc_blocks.push(Block { l, r })
+        enc_blocks.push(Block { l, r, stripped: 0 })
     }
 
-    // let key = [1u64, 2, 3, 4, 5, 6];
-    for block in 0..enc_blocks.len() {
-        enc_blocks[block].run_n_rounds(0, key.len() - 1, &key, false);
+    for idx in 0..enc_blocks.len() {
+        let block_key = kk[idx % kk.len()];
+        enc_blocks[idx].run_n_rounds(4, block_key, true);
     }
 
     // serialising cyphertext
-    output_to_file(&enc_blocks, "encrypted_file", false);
+    output_to_file(&mut enc_blocks, None, "encrypted_file");
 }
