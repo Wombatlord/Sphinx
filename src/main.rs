@@ -32,39 +32,14 @@ fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
             pt_vec.push(space);
         }
         pt.extend(pt_vec.into_iter());
+    } else {
+        for _ in 0..16 {
+            pt.push(16 as u8)
+        }
     }
-
+    println!("{pt:?}");
     return pt;
 }
-
-fn strip_padding(block: Block) -> Vec<u8> {
-    // https://www.cryptosys.net/pki/manpki/pki_paddingschemes.html PKCS5
-
-    // TODO: Padding runs across the block boundary now.
-    // Change this to just take a vec of the final block bytes
-    // Then no need to iterate over the sub block halves separately.
-
-    let mut maybe_padded_l = bytes_of(&block.l).to_vec();
-    let padding_amount_l = maybe_padded_l[maybe_padded_l.len() - 1];
-    let b = maybe_padded_l.len() as u8 - padding_amount_l;
-    println!("L: {maybe_padded_l:?}");
-    for _ in b..maybe_padded_l.len() as u8 {
-        maybe_padded_l.pop();
-    }
-
-    let mut maybe_padded_r = bytes_of(&block.r).to_vec();
-    let padding_amount_r = maybe_padded_r[maybe_padded_r.len() - 1];
-    let b = maybe_padded_r.len() as u8 - padding_amount_r;
-    println!("R: {maybe_padded_r:?}");
-    for _ in b..maybe_padded_r.len() as u8 {
-        maybe_padded_r.pop();
-    }
-
-    maybe_padded_l.extend(maybe_padded_r);
-
-    maybe_padded_l
-}
-
 
 fn strip_padding_vec(mut vec: Vec<u8>) -> Vec<u8> {
     let padding_indication_byte = vec[vec.len() - 1];
@@ -87,25 +62,6 @@ fn pack_u8s_to_u64(padded_pt_vec: Vec<u8>, u64_vec: &mut VecDeque<u64>) {
         u64_vec.push_back(as64)
     }
 }
-
-fn ensure_block_pairs(u64_vec: &mut VecDeque<u64>) {
-    // Block.l and Block.r must both contain a u64,
-    // If u64_vec is not divisible by 2, we need a "null" u64 to pair with the final Block.l
-    if u64_vec.len() % 2 != 0 {
-        let pad_u64: u64 = u8_slice_to_u64(&[8u8; 8]);
-        u64_vec.push_back(pad_u64);
-    }
-}
-
-// KEY STUFF
-// https://docs.rs/pbkdf2/latest/pbkdf2/
-// https://crates.io/crates/hkdf
-//
-// gen key with one of these, then bit rotate the key by the round?
-// https://levelup.gitconnected.com/learning-rust-rolling-bits-53b6b3b20d02
-//
-// https://github.com/mikepound/feistel/blob/master/feistel.py
-//
 
 fn main() {
     let args = Args::parse();
