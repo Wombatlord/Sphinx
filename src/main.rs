@@ -39,6 +39,11 @@ fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
 
 fn strip_padding(block: Block) -> Vec<u8> {
     // https://www.cryptosys.net/pki/manpki/pki_paddingschemes.html PKCS5
+
+    // TODO: Padding runs across the block boundary now.
+    // Change this to just take a vec of the final block bytes
+    // Then no need to iterate over the sub block halves separately.
+
     let mut maybe_padded_l = bytes_of(&block.l).to_vec();
     let padding_amount_l = maybe_padded_l[maybe_padded_l.len() - 1];
     let b = maybe_padded_l.len() as u8 - padding_amount_l;
@@ -58,6 +63,18 @@ fn strip_padding(block: Block) -> Vec<u8> {
     maybe_padded_l.extend(maybe_padded_r);
 
     maybe_padded_l
+}
+
+
+fn strip_padding_vec(mut vec: Vec<u8>) -> Vec<u8> {
+    let padding_indication_byte = vec[vec.len() - 1];
+    let b = vec.len() as u8 - padding_indication_byte;
+
+    for _ in b..vec.len() as u8{
+        vec.pop();
+    }
+
+    return vec;
 }
 
 fn pack_u8s_to_u64(padded_pt_vec: Vec<u8>, u64_vec: &mut VecDeque<u64>) {
@@ -168,7 +185,16 @@ fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
         let block_key = kk[idx % kk.len()];
         dec_blocks[idx].run_n_rounds(4, block_key, false);
     }
-    let stripped = strip_padding(dec_blocks[dec_blocks.len() - 1]);
+    // let stripped = strip_padding(dec_blocks[dec_blocks.len() - 1]);
+
+    let end_block = dec_blocks[dec_blocks.len() - 1];
+    let mut end_block_vec_l = bytes_of(&end_block.l).to_vec();
+    let end_block_vec_r = bytes_of(&end_block.r).to_vec();
+    end_block_vec_l.extend(end_block_vec_r);
+
+    let stripped = strip_padding_vec(end_block_vec_l);
+
+
     output_to_file(&mut dec_blocks, Some(stripped), "decrypted_file");
     dec_blocks
 }
@@ -180,7 +206,6 @@ fn encrypt(path: &str, key: &[u8; 32]) {
     
     let mut u64_encoded: VecDeque<u64> = vec![].into();
     pack_u8s_to_u64(padded, &mut u64_encoded);
-    ensure_block_pairs(&mut u64_encoded);
 
     // key prep
     let (_, kk) = key_slice(&u64_encoded, key);
