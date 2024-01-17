@@ -28,8 +28,5 @@ pub fn output_to_file(blocks: &mut Vec<Block>, pad_stripped_vec: Option<Vec<u8>>
         .open(path)
         .expect("oh boy");
 
-    // Store a byte header in the encrypted file indicating how many null bytes were added as padding in the final block
-    // PSYCH WE DO IT LIVE.
-
     file.write_all(&v).expect("uh oh spaghettios");
 }

@@ -23,12 +23,12 @@ fn u8_slice_to_u64(s: &[u8]) -> u64 {
 
 fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
     let mut pt_vec: Vec<u8> = vec![];
-    let padding_required: usize = pt.len() % 8;
+    let padding_required: usize = pt.len() % 16;
 
     if padding_required > 0 {
-        println!("pad: {0}", 8 - padding_required);
-        let space: u8 = 8 - padding_required as u8;
-        for _ in 0..(8 - padding_required) {
+        println!("pad: {0}", 16 - padding_required);
+        let space: u8 = 16 - padding_required as u8;
+        for _ in 0..(16 - padding_required) {
             pt_vec.push(space);
         }
         pt.extend(pt_vec.into_iter());
@@ -42,7 +42,7 @@ fn strip_padding(block: Block) -> Vec<u8> {
     let mut maybe_padded_l = bytes_of(&block.l).to_vec();
     let padding_amount_l = maybe_padded_l[maybe_padded_l.len() - 1];
     let b = maybe_padded_l.len() as u8 - padding_amount_l;
-
+    println!("L: {maybe_padded_l:?}");
     for _ in b..maybe_padded_l.len() as u8 {
         maybe_padded_l.pop();
     }
@@ -50,7 +50,7 @@ fn strip_padding(block: Block) -> Vec<u8> {
     let mut maybe_padded_r = bytes_of(&block.r).to_vec();
     let padding_amount_r = maybe_padded_r[maybe_padded_r.len() - 1];
     let b = maybe_padded_r.len() as u8 - padding_amount_r;
-
+    println!("R: {maybe_padded_r:?}");
     for _ in b..maybe_padded_r.len() as u8 {
         maybe_padded_r.pop();
     }
@@ -174,13 +174,11 @@ fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
 }
 
 fn encrypt(path: &str, key: &[u8; 32]) {
-    // let plain_text3: String = read_to_string(path).unwrap();
-
     let pt = fs::read(path).unwrap();
-
     let padded = pad_bytes(pt);
-    let mut u64_encoded: VecDeque<u64> = vec![].into();
 
+    
+    let mut u64_encoded: VecDeque<u64> = vec![].into();
     pack_u8s_to_u64(padded, &mut u64_encoded);
     ensure_block_pairs(&mut u64_encoded);
 
