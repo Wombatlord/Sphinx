@@ -46,11 +46,19 @@ fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
 fn strip_padding_vec(mut vec: Vec<u8>) -> Vec<u8> {
     let padding_indication_byte = vec[vec.len() - 1];
     let b = vec.len() as u8 - padding_indication_byte;
-
-    for _ in b..vec.len() as u8{
-        vec.pop();
+    
+    if b == 0 {
+        for _ in 0..vec.len() {
+            println!("POP");
+            vec.pop();
+        }
+    } else {
+        for _ in b..vec.len() as u8{
+            vec.pop();
+        }
     }
-
+    
+    println!("{:?}", vec);
     return vec;
 }
 
@@ -130,6 +138,7 @@ fn decrypt(path: &str, key: &[u8; 32]) {
     }
 
     let end_block = dec_blocks[dec_blocks.len() - 1];
+    dec_blocks.pop();
     let mut end_block_vec_l = bytes_of(&end_block.l).to_vec();
     let end_block_vec_r = bytes_of(&end_block.r).to_vec();
     end_block_vec_l.extend(end_block_vec_r);

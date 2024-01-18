@@ -4,15 +4,11 @@ use std::io::Write;
 
 use crate::block::Block;
 
-pub fn output_to_file(mut blocks: Vec<Block>, pad_stripped_vec: Option<Vec<u8>>, path: &str) {
+pub fn output_to_file(blocks: Vec<Block>, pad_stripped_vec: Option<Vec<u8>>, path: &str) {
     let pad_stripped: Vec<u8> = match pad_stripped_vec {
         Some(s) => s,
         None => vec![],
     };
-
-    if pad_stripped.len() != 0 {
-        blocks.pop();
-    }
 
     let mut v: Vec<u8> = vec![];
     for bl in blocks {
