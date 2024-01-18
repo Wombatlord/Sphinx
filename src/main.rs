@@ -2,6 +2,7 @@ mod block;
 mod cli;
 mod io;
 
+use std::sync::mpsc;
 use argon2::Argon2;
 use block::Block;
 use bytemuck::bytes_of;
@@ -10,6 +11,7 @@ use cli::Args;
 use io::output_to_file;
 use std::{
     collections::VecDeque,
+    thread,
     fs::{self, read},
     str::from_utf8,
 };
@@ -26,7 +28,7 @@ fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
     let padding_required: usize = pt.len() % 16;
 
     if padding_required > 0 {
-        println!("pad: {0}", 16 - padding_required);
+        // println!("pad: {0}", 16 - padding_required);
         let space: u8 = 16 - padding_required as u8;
         for _ in 0..(16 - padding_required) {
             pt_vec.push(space);
@@ -37,7 +39,7 @@ fn pad_bytes(mut pt: Vec<u8>) -> Vec<u8> {
             pt.push(16 as u8)
         }
     }
-    println!("{pt:?}");
+    // println!("{pt:?}");
     return pt;
 }
 
@@ -72,20 +74,7 @@ fn main() {
         encrypt(path, &output_key_material);
     }
     if let Some(path) = args.decrypt.as_deref() {
-        let dec_blocks = decrypt(path, &output_key_material);
-
-        // This is only terminal output related
-        if args.verbose {
-            let mut final_dec = vec![];
-            for bl in dec_blocks {
-                let l = u64::to_ne_bytes(bl.l);
-                let r = u64::to_ne_bytes(bl.r);
-                final_dec.push(l);
-                final_dec.push(r);
-            }
-            let f = final_dec.concat();
-            println!("Decrypted:\t{0}", from_utf8(&f).unwrap())
-        }
+        decrypt(path, &output_key_material);
     }
 }
 
@@ -99,7 +88,7 @@ fn derive_key<const B: usize>(args: &Args) -> [u8; B] {
         .hash_password_into(password, salt, &mut output_key_material)
         .expect("argon broke dawg");
 
-    println!("{output_key_material:?}");
+    // println!("{output_key_material:?}");
     output_key_material
 }
 
@@ -114,7 +103,7 @@ fn key_slice(u64_encoded: &VecDeque<u64>, key: &[u8; 32]) -> (usize, Vec<u8>) {
     (required_blocks, kk)
 }
 
-fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
+fn decrypt(path: &str, key: &[u8; 32]) {
     // deserialise cyphertext
     let bytes_from_ct_file = read(path).unwrap();
     let mut u64_encoded: VecDeque<u64> = vec![].into();
@@ -122,7 +111,6 @@ fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
 
     //key prep
     let (required_blocks, kk) = key_slice(&u64_encoded, key);
-    // println!("{kk:?}");
 
     // un-cryptin'
     let mut dec_blocks: Vec<Block> = vec![];
@@ -136,12 +124,10 @@ fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
         dec_blocks.push(x)
     }
 
-    // let key = [6u64, 5, 4, 3, 2, 1];
     for idx in 0..dec_blocks.len() {
         let block_key = kk[idx % kk.len()];
         dec_blocks[idx].run_n_rounds(4, block_key, false);
     }
-    // let stripped = strip_padding(dec_blocks[dec_blocks.len() - 1]);
 
     let end_block = dec_blocks[dec_blocks.len() - 1];
     let mut end_block_vec_l = bytes_of(&end_block.l).to_vec();
@@ -150,35 +136,170 @@ fn decrypt(path: &str, key: &[u8; 32]) -> Vec<Block> {
 
     let stripped = strip_padding_vec(end_block_vec_l);
 
-
-    output_to_file(&mut dec_blocks, Some(stripped), "decrypted_file");
-    dec_blocks
+    output_to_file(dec_blocks, Some(stripped), "decrypted_file");
 }
 
 fn encrypt(path: &str, key: &[u8; 32]) {
     let pt = fs::read(path).unwrap();
     let padded = pad_bytes(pt);
-
     
     let mut u64_encoded: VecDeque<u64> = vec![].into();
     pack_u8s_to_u64(padded, &mut u64_encoded);
-
     // key prep
     let (_, kk) = key_slice(&u64_encoded, key);
-    println!("{kk:?}");
 
-    // cryptin'
+    // let enc_blocks = encrypt_in_blocks(u64_encoded, kk);
+    let enc_blocks = parallel_encrypt_in_blocks(u64_encoded, kk, 4);
+
+    // // cryptin'
+    // let mut enc_blocks: Vec<Block> = vec![];
+
+    // while let (Some(l), Some(r)) = (u64_encoded.pop_front(), u64_encoded.pop_front()) {
+    //     enc_blocks.push(Block { l, r, stripped: 0 })
+    // }
+
+    // for idx in 0..enc_blocks.len() {
+    //     let block_key = kk[idx % kk.len()];
+    //     enc_blocks[idx].run_n_rounds(4, block_key, true);
+    // }
+
+    // serialising cyphertext
+    output_to_file(enc_blocks, None, "encrypted_file");
+}
+
+struct BlockSpan {
+    pub idx: usize,
+    pub start: usize,
+    span: VecDeque<u64>,
+    key_span: Vec<u8>,
+    output_channel: mpsc::Sender<Payload>,
+}
+
+impl BlockSpan {
+    fn consume(idx: usize, length: usize, start: usize, msg: &mut VecDeque<u64>, ks: &[u8], output: mpsc::Sender<Payload>) -> Self {
+        let to_consume = usize::min(length, msg.len());
+        let mut consumed: VecDeque<u64> = VecDeque::new();
+        for _ in 0..to_consume*2 {
+            let Some(item) = msg.pop_front() else { break; };
+            consumed.push_back(item);
+        }
+        println!("sp: {:?}", consumed.len());
+        Self {
+            idx,
+            start,
+            span: consumed,
+            key_span: ks.into(), 
+            output_channel: output
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.span.len()
+    }
+
+    fn next_start(&self) -> usize {
+        self.start + self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn do_work(&mut self) {
+        let mut enc_blocks: Vec<Block> = vec![];
+        while let (Some(l), Some(r)) = (self.span.pop_front(), self.span.pop_front()) {
+            enc_blocks.push(Block { l, r, stripped: 0 })
+        }
+        println!("SPAN LEN: {}", enc_blocks.len());
+        for idx in self.start..enc_blocks.len() { // <<< changed from self.start..self.next_start
+            let block_key = key_segment(&self.key_span, idx);
+            enc_blocks[idx].run_n_rounds(4, block_key, true);
+        }
+
+        self.output_channel.send(Payload(self.idx, enc_blocks)).unwrap();
+    }
+}
+
+#[derive(Clone)]
+struct Payload(usize, Vec<Block>);
+
+
+fn key_segment(key: &[u8], n: usize) -> u8 {
+    key[n % key.len()]
+}
+
+fn parallel_encrypt_in_blocks(mut message: VecDeque<u64>, ks: Vec<u8>, mut span_size: usize) -> Vec<Block>  {
+    // Prep thy threads foul imp!
+    let mut spans: VecDeque<VecDeque<u64>> = VecDeque::new();
+    while message.len() > 0 {
+        let mut span = VecDeque::new();
+        for _ in 0..span_size*16 { // changed from 2
+            let Some(chunk) = message.pop_front() else {break;};
+            span.push_back(chunk);
+        }
+        spans.push_back(span);
+    }
+
+    // The fruit of thy labour is written
+    let (sender, receiver) = mpsc::channel::<Payload>();
+    let mut cursor = 0;
+    let mut span_idx = 0;
+    let mut block_spans: Vec<BlockSpan> = vec![];
+    while let Some(mut span) = spans.pop_front() {
+        println!("Cursor: {cursor:?}");
+        println!("Span len: {}", span.len());
+        let block_span = BlockSpan::consume(span_idx, span.len(), cursor.clone(), &mut span, &ks, sender.clone());
+        cursor += span.len(); // never increments
+        span_idx += 1;
+        
+        block_spans.push(block_span);
+    }
+
+    let thread_count = block_spans.len();
+    // I have sealed your fate
+    while let Some(mut span) = block_spans.pop() {
+        thread::spawn(move || {
+            span.do_work();            
+        });
+    }
+
+    let mut enc_result: Vec<Option<Vec<Block>>> = vec![];
+    for _ in 0..thread_count {
+        enc_result.push(None);
+    }
+
+    // And I will reap my rewards
+    while enc_result.iter().map(|r| match r {Some(_) => 1, None => 0}).sum::<usize>() < thread_count {
+        let payload: Payload = match receiver.recv() {
+            Ok(p) => p,
+            Err(e) => panic!("{e}"),
+        };
+        let Payload(idx, blocks) = payload;
+        enc_result[idx] = Some(blocks);
+    }
+
+    // and scatter thy ashes to the four winds
+    let mut result: Vec<Block> = vec![];
+    for (idx, item) in enc_result.iter().enumerate() {
+        let Some(blocks) = item else { panic!(); };
+        println!("BLOCK {:?}: {:X}", idx, blocks[0].l);
+
+        result.extend(blocks.iter());
+    }
+    result
+}
+
+fn encrypt_in_blocks(mut message: VecDeque<u64>, ks: Vec<u8>) -> Vec<Block> {
     let mut enc_blocks: Vec<Block> = vec![];
 
-    while let (Some(l), Some(r)) = (u64_encoded.pop_front(), u64_encoded.pop_front()) {
+    while let (Some(l), Some(r)) = (message.pop_front(), message.pop_front()) {
         enc_blocks.push(Block { l, r, stripped: 0 })
     }
 
     for idx in 0..enc_blocks.len() {
-        let block_key = kk[idx % kk.len()];
+        let block_key = key_segment(&ks, idx);
         enc_blocks[idx].run_n_rounds(4, block_key, true);
     }
 
-    // serialising cyphertext
-    output_to_file(&mut enc_blocks, None, "encrypted_file");
+    enc_blocks
 }
