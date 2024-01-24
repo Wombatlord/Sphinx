@@ -16,9 +16,9 @@ pub struct Args {
     #[arg(short, long, value_name = "target file path")]
     pub decrypt: Option<String>,
 
+    #[arg(short, long, value_name = "parallelize")]
+    pub parallelize: bool,
+
     #[arg(short, long, value_name = "secret key")]
     pub key: String,
-
-    #[arg(short, long, value_name = "verbose", default_value_t = false)]
-    pub verbose: bool,
 }
