@@ -190,6 +190,9 @@ impl Blowfish {
     }
 
     pub fn initialize<P: PackBytes<u32>>(mut key: Vec<u8>) -> Self {
+        if key.len() < 4 || key.len() > 56 {
+            panic!("Key must be between 4 and 56 bytes. Got {} bytes.", key.len());
+        } 
         let mut boxes: Blowfish = Blowfish::boxes();
         let mut key_bytes_u32: Vec<u32> = vec![];
         for b in key.chunks(4) {
