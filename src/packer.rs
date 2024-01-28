@@ -24,14 +24,20 @@ impl Packer {
     pub fn strip_padding_vec(mut vec: Vec<u8>) -> Vec<u8> {
         let padding_indication_byte = vec[vec.len() - 1];
         let b = vec.len() as u8 - padding_indication_byte;
-        if b == 0 {
-            for _ in 0..vec.len() {
-                vec.pop();
-            }
+        let slice = &vec[b as usize..];
+        
+        if slice.iter().all(|&a| a == vec.len() as u8 - b) {
+            // if b == 0 {
+            //     for _ in 0..vec.len() {
+            //         vec.pop();
+            //     }
+            // } else {
+                for _ in b..vec.len() as u8{
+                    vec.pop();
+                }
+            // }
         } else {
-            for _ in b..vec.len() as u8{
-                vec.pop();
-            }
+            panic!("Decryption Failed.")
         }
         
         return vec;
