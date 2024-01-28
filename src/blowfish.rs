@@ -1,8 +1,20 @@
-use std::{collections::VecDeque, fs::{self, read}, time::Instant};
+use crate::{block::Block, packer::PackBytes};
+use crate::feistel::FeistelNetwork;
+struct FourByte(u32);
 
-use crate::{block::Block, io::output_to_file, packer::{PackBytes, Packer}};
+impl Into<(u8, u8, u8, u8)> for FourByte {
+    fn into(self) -> (u8, u8, u8, u8) {
+        (
+            ((self.0 >> 0) & 0xFF) as u8, 
+            ((self.0 >> 8) & 0xFF) as u8, 
+            ((self.0 >> 16) & 0xFF) as u8, 
+            ((self.0 >> 24) & 0xFF) as u8, 
+        )
+    }
+}
 
-pub struct Boxes {
+#[derive(Clone, Copy)]
+pub struct Blowfish {
     pub p: [u32; 18],
     pub s1: [u32; 256],
     pub s2: [u32; 256],
@@ -10,9 +22,9 @@ pub struct Boxes {
     pub s4: [u32; 256],
 }
 
-impl Boxes {
-    pub fn new() -> Boxes {
-        return Boxes {
+impl Blowfish {
+    pub fn boxes() -> Blowfish {
+        return Blowfish {
             p: [
                 0x243F6A88, 0x85A308D3, 0x13198A2E, 0x03707344, 0xA4093822, 0x299F31D0, 0x082EFA98,
                 0xEC4E6C89, 0x452821E6, 0x38D01377, 0xBE5466CF, 0x34E90C6C, 0xC0AC29B7, 0xC97C50DD,
@@ -177,205 +189,111 @@ impl Boxes {
         };
     }
 
-    fn permute_s1(zero_block: &mut Block<u32>, boxes: &mut Boxes) {
-        println!("S1[254]: {:X}\nS1[255]: {:X}", boxes.s1[254], boxes.s1[255]);
-        for i in (0..256).step_by(2) {
-            Blowfish::blowfish_feistel(zero_block, boxes);
-            boxes.s1[i] = zero_block.l;
-            boxes.s1[i + 1] = zero_block.r;
-        }
-        println!("S1[254]: {:X}\nS1[255]: {:X}\n--------", boxes.s1[254], boxes.s1[255]);
-    }
-    
-    fn permute_s2(zero_block: &mut Block<u32>, boxes: &mut Boxes) {
-        println!("S2[254]: {:X}\nS2[255]: {:X}", boxes.s2[254], boxes.s2[255]);
-        for i in (0..256).step_by(2) {
-            Blowfish::blowfish_feistel(zero_block, boxes);
-            boxes.s2[i] = zero_block.l;
-            boxes.s2[i + 1] = zero_block.r;
-        }
-        println!("S2[254]: {:X}\nS2[255]: {:X}\n--------", boxes.s2[254], boxes.s2[255]);
-
-    }
-
-    fn permute_s3(zero_block: &mut Block<u32>, boxes: &mut Boxes) {
-        println!("S3[254]: {:X}\nS3[255]: {:X}", boxes.s3[254], boxes.s3[255]);
-        for i in (0..256).step_by(2) {
-            Blowfish::blowfish_feistel(zero_block, boxes);
-            boxes.s3[i] = zero_block.l;
-            boxes.s3[i + 1] = zero_block.r;
-        }
-        println!("S3[254]: {:X}\nS3[255]: {:X}\n--------", boxes.s3[254], boxes.s3[255]);
-    }
-    
-    fn permute_s4(zero_block: &mut Block<u32>, boxes: &mut Boxes) {
-        println!("S4[254]: {:X}\nS4[255]: {:X}", boxes.s4[254], boxes.s4[255]);
-        for i in (0..256).step_by(2) {
-            Blowfish::blowfish_feistel(zero_block, boxes);
-            boxes.s4[i] = zero_block.l;
-            boxes.s4[i + 1] = zero_block.r;
-        }
-        println!("S4[254]: {:X}\nS4[255]: {:X}\n--------", boxes.s4[254], boxes.s4[255]);
-    }
-}
-
-pub struct Blowfish;
-
-impl Blowfish {
-
-    fn bit_selecta(sub_block: u32) -> (u8, u8, u8, u8) {
-        (
-            (sub_block & 0xFF) as u8,
-            ((sub_block & 0xFF << 8) >> 8) as u8,
-            ((sub_block & 0xFF << 16) >> 16) as u8,
-            ((sub_block & 0xFF << 24) >> 24) as u8,
-        )    
-    }
-
-    fn round_fn(sub_block: u32, boxes: &Boxes) -> u32 {
-        let f: (u8, u8, u8, u8) = Self::bit_selecta(sub_block);
-        let s1: u32 = boxes.s1[f.0 as usize];
-        let s2: u32 = boxes.s2[f.1 as usize];
-        let s3: u32 = boxes.s3[f.2 as usize];
-        let s4: u32 = boxes.s4[f.3 as usize];
-
-        let s1_add_s2: u32 = (s1 + s2) % (2u32.pow(32) - 1);
-        let xored: u32 = s1_add_s2 ^ s3;
-        let xored_add_s4: u32 = (xored + s4) % (2u32.pow(32) - 1);
-
-        return xored_add_s4;
-    }
-
-    fn blowfish_feistel(block: &mut Block<u32>, boxes: &Boxes) {
-        for i in 0..16 {
-            if i % 2 == 0 {
-                block.l ^= boxes.p[i];
-                block.r ^= Self::round_fn(block.l, &boxes);
-            } else {
-                block.r ^= boxes.p[i];
-                block.l ^= Self::round_fn(block.r, &boxes);
-            }
-        }
-        
-        let tmp = block.l;
-        block.l = block.r;
-        block.r = tmp;
-
-        block.r ^= boxes.p[16];
-        block.l ^= boxes.p[17];
-    }
-
-    pub fn subkey_shenanigans(key: Vec<u8>) -> Boxes {
-        // Initialise P and S boxes and prepare key material.
-        let mut boxes: Boxes = Boxes::new();
+    pub fn initialize<P: PackBytes<u32>>(mut key: Vec<u8>) -> Self {
+        let mut boxes: Blowfish = Blowfish::boxes();
         let mut key_bytes_u32: Vec<u32> = vec![];
-        
         for b in key.chunks(4) {
-            key_bytes_u32.push(<Packer as PackBytes<u32>>::u8s_to_subblock(b))
+            key_bytes_u32.push(P::u8s_to_subblock(b))
         }
 
         // Base permutation of P box values
-        println!("P0: {:X}\nP1: {:X}", boxes.p[0], boxes.p[1]);
         for i in 0..18 {
             boxes.p[i] ^= key_bytes_u32[i % key_bytes_u32.len()];
         }
-        println!("P0: {:X}\nP1: {:X}", boxes.p[0], boxes.p[1]);
 
         // Initialise Zero Block to use in full permutation of P and S Boxes.
         let mut zero_block: Block<u32> = Block { l: 0, r: 0 };
 
         // Begin subkey generation across all P and S boxes.
         for i in (0..boxes.p.len()).step_by(2) {
-            Self::blowfish_feistel(&mut zero_block, &boxes);
+            boxes.feistel(&mut zero_block);
             boxes.p[i] = zero_block.l;
             boxes.p[i + 1] = zero_block.r;
         }
-        println!("P0: {:X}\nP1: {:X}", boxes.p[0], boxes.p[1]);
         
-        Boxes::permute_s1(&mut zero_block, &mut boxes);
-        Boxes::permute_s2(&mut zero_block, &mut boxes);
-        Boxes::permute_s3(&mut zero_block, &mut boxes);
-        Boxes::permute_s4(&mut zero_block, &mut boxes);
+        for i in 0..4 {
+            boxes.permute(&mut zero_block, i);
+        }
 
-        return boxes;
-
+        key.clear();
+        return boxes;   
     }
 
+    fn round(&self, sub_block: u32) -> u32 {
+        let (b0, b1, b2, b3) = FourByte(sub_block).into();
+        let s1: u32 = self.s1[b0 as usize];
+        let s2: u32 = self.s2[b1 as usize];
+        let s3: u32 = self.s3[b2 as usize];
+        let s4: u32 = self.s4[b3 as usize];
 
+        let s1_add_s2: u32 = s1 + s2 % (u32::MAX);
+        let xored: u32 = s1_add_s2 ^ s3;
+        let xored_add_s4: u32 = xored + s4 % (2u32.pow(32) - 1);
 
-    pub fn encrypt(path: &str, key: Vec<u8>) {
-        let pt: Vec<u8> = fs::read(path).unwrap();
-        let now: Instant = Instant::now();
-    
-        let padded: Vec<u8> = Packer::pad_bytes(pt, 16);
-        
-        let mut u32_encoded: VecDeque<u32> = vec![].into();
-        <Packer as PackBytes<u32>>::u8s_to_vecdeque(padded, &mut u32_encoded);
-        
-        // key prep
-        let boxes: Boxes = Self::subkey_shenanigans(key);
-        let enc_blocks: Vec<Block<u32>> = Self::encrypt_in_blocks(u32_encoded, &boxes);
-    
-        let mut enc_bytes = vec![];
-    
-        for b in enc_blocks {
-            enc_bytes.extend(b.to_bytes())
-        }
-    
-        let elapsed_time = now.elapsed();
-        println!("{:?}", elapsed_time);
-        // serialising cyphertext
-        output_to_file(enc_bytes, "encrypted_file");
+        return xored_add_s4;
     }
 
-    fn encrypt_in_blocks(mut message: VecDeque<u32>, boxes: &Boxes) -> Vec<Block<u32>> {
-        let mut enc_blocks: Vec<Block<u32>> = vec![];
-    
-        while let (Some(l), Some(r)) = (message.pop_front(), message.pop_front()) {
-            enc_blocks.push(Block { l, r, })
+    pub fn reverse_p_box(&self) -> Self {
+        let mut rev = self.clone();
+        let v: Vec<u32> = rev.p.iter().rev().map(|&x| x).collect();
+        for (i, &val) in v.iter().enumerate() {
+            rev.p[i] = val;
         }
-        for idx in 0..enc_blocks.len() {
-            Self::blowfish_feistel(&mut enc_blocks[idx], boxes)
-        }
-    
-        return enc_blocks;
+        return rev;
     }
 
-    pub fn decrypt(path: &str, key: Vec<u8>) {
-        // deserialise cyphertext
-        let bytes_from_ct_file = read(path).unwrap();
-        let mut u32_encoded: VecDeque<u32> = vec![].into();
-        <Packer as PackBytes<u32>>::u8s_to_vecdeque(bytes_from_ct_file, &mut u32_encoded);
-    
-        let mut boxes: Boxes = Self::subkey_shenanigans(key);
-        
-        // un-cryptin'
-        let mut dec_blocks: Vec<Block<u32>> = Self::decrypt_in_blocks(u32_encoded, &mut boxes);
-
-        let end_block = dec_blocks.pop().unwrap();
-        let end_block_vec = end_block.to_bytes();
-    
-        let mut dec_bytes: Vec<u8> = vec![];
-        for b in dec_blocks {
-            dec_bytes.extend(b.to_bytes())
+    pub fn feistel(&self, block: &mut Block<u32>) {
+        for i in 0..16 {
+            block.l ^= self.p[i];
+            block.r ^= self.round(block.l);
+            (block.l, block.r) = (block.r, block.l);
         }
-        dec_bytes.extend(Packer::strip_padding_vec(end_block_vec));
+        
+        // undo last swap
+        (block.l, block.r) = (block.r, block.l);
+
+        block.r ^= self.p[16];
+        block.l ^= self.p[17];
+    }
     
-        output_to_file(dec_bytes, "decrypted_file");
+    fn get_s(&self, i: usize) -> [u32; 256] {
+        match i {
+            0 => self.s1,
+            1 => self.s2,
+            2 => self.s3,
+            3 => self.s4,
+            _ => panic!(),
+        }
     }
 
-    fn decrypt_in_blocks(mut message: VecDeque<u32>, boxes: &mut Boxes) -> Vec<Block<u32>> {
-        let mut dec_blocks: Vec<Block<u32>> = vec![];
-        
-        while let (Some(l), Some(r)) = (message.pop_front(), message.pop_front()) {
-            dec_blocks.push(Block { l, r, })
+    fn set_s(&mut self, i: usize, s: [u32; 256]) {
+        match i {
+            0 => { self.s1 = s; },
+            1 => { self.s2 = s; },
+            2 => { self.s3 = s; },
+            3 => { self.s4 = s; },
+            _ => panic!(),
         }
-        
-        boxes.p.reverse();
-        for idx in 0..dec_blocks.len() {
-            Self::blowfish_feistel(&mut dec_blocks[idx], boxes)
+    }
+
+    fn permute(&mut self, block: &mut Block<u32>, s_idx: usize) {
+        let mut s = self.get_s(s_idx);
+        for i in (0..256).step_by(2) {
+            self.feistel(block);
+            s[i] = block.l;
+            s[i + 1] = block.r;
         }
-    
-        return dec_blocks;
+        self.set_s(s_idx, s);
     }
 }
+
+impl FeistelNetwork for Blowfish {
+    fn run(&self, block: &mut Block<u32>) {
+        self.feistel(block);
+    }
+
+    fn with_reversal(&self) -> impl FeistelNetwork {
+        self.reverse_p_box()
+    }
+}
+

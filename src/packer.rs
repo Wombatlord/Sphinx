@@ -24,7 +24,6 @@ impl Packer {
     pub fn strip_padding_vec(mut vec: Vec<u8>) -> Vec<u8> {
         let padding_indication_byte = vec[vec.len() - 1];
         let b = vec.len() as u8 - padding_indication_byte;
-        
         if b == 0 {
             for _ in 0..vec.len() {
                 vec.pop();
@@ -37,6 +36,7 @@ impl Packer {
         
         return vec;
     }
+
 }
 
 pub trait PackBytes<T> {
@@ -74,7 +74,7 @@ impl PackBytes<u32> for Packer {
     fn u8s_to_vecdeque(padded: Vec<u8>, buf: &mut VecDeque<u32>) {
         // Take 4 bytes at a time from the byte slice of the plain text input
         for m in padded.chunks(4) {
-            // convert 8 bytes to a u64 representation
+            // convert 4 bytes to a u32 representation
             let as32: u32 = Self::u8s_to_subblock(m);
 
             buf.push_back(as32)
