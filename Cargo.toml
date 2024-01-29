@@ -9,3 +9,5 @@ edition = "2021"
 argon2 = "0.5.2"
 bytemuck = {version = "1.14.0"}
 clap = { version = "4.4.16", features = ["derive"] }
+rand = { version = "0.8.5" }
+rand_chacha = "0.3.1"

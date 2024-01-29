@@ -25,7 +25,7 @@ impl<M, F> Encryptor<M, F> where
     pub fn encrypt(&self, message: VecDeque<u32>) {   
         let blocks = self.0.encrypt(message, &self.1);
         let mut enc_bytes = vec![];
-    
+
         for b in blocks {
             enc_bytes.extend(b.to_bytes())
         }

@@ -20,7 +20,20 @@ use mode_of_operation::ModeOfOperation;
 use feistel::FeistelNetwork;
 use modes::{CBC, ECB};
 
+
+use rand::rngs::OsRng;
+use rand::rngs::adapter::ReseedingRng;
+use rand::prelude::*;
+use rand_chacha::ChaCha20Core;
+
 fn main() {
+    // if true {
+    //     let prng = ChaCha20Core::from_entropy();
+    //     let mut reseeding_rng = ReseedingRng::new(prng, 0, OsRng); //Reseeding
+    //     println!("Random number: {}", reseeding_rng.gen::<u64>());
+    //     return
+    // }
+
     let args = Args::parse();
 
     let (path, encrypt_msg) = match (args.encrypt, args.decrypt) {
@@ -30,7 +43,10 @@ fn main() {
         (None, None) => panic!("Must either encrypt or decrypt"),
     };
 
-    let iv = u64::MAX; // PLACEHOLDER IV
+    let prng = ChaCha20Core::from_entropy();
+    let mut reseeding_rng = ReseedingRng::new(prng, 0, OsRng);
+    let iv = reseeding_rng.gen::<u64>(); // PLACEHOLDER IV
+
     let key = args.key.as_bytes().to_vec();
     let (ecb, cbc) = (ECB{}, CBC { init_vec: iv });
     match (args.mode, encrypt_msg) {

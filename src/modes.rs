@@ -11,19 +11,25 @@ impl ModeOfOperation for CBC {
     fn encrypt(&self, mut message: VecDeque<u32>, boxes: &impl FeistelNetwork) -> Vec<Block<u32>> {
         let init_vec = self.init_vec;
         let mut enc_blocks: Vec<Block<u32>> = vec![];
- 
+        
+        let iv_l: u32 = (init_vec >> 32 & u64::MAX) as u32;
+        let iv_r: u32 = (init_vec & u64::MAX) as u32;
+        let iv_b: Block<u32> = Block{l: iv_l, r: iv_r};
+        enc_blocks.push(iv_b);
+
         while let (Some(l), Some(r)) = (message.pop_front(), message.pop_front()) {
             enc_blocks.push(Block { l, r, })
         }
         
-        enc_blocks[0].cbc_mode_xor(init_vec);
-        boxes.run(&mut enc_blocks[0]);
+        enc_blocks[1].cbc_mode_xor(init_vec);
+        boxes.run(&mut enc_blocks[1]);
 
-        for idx in 1..enc_blocks.len() {
+        for idx in 2..enc_blocks.len() {
             let pt = enc_blocks[idx-1].full_block();
             enc_blocks[idx].cbc_mode_xor(pt);
             boxes.run(&mut enc_blocks[idx]);
         }
+
 
         // let mut windows = enc_blocks.windows(2);
         // enc_blocks[0].cbc_mode_xor(init_vec);
@@ -42,8 +48,8 @@ impl ModeOfOperation for CBC {
 
     fn decrypt(&self, mut message: VecDeque<u32>, boxes: &impl FeistelNetwork) -> Vec<Block<u32>> {
         let boxes = boxes.with_reversal();
-        let init_vec = self.init_vec;
         let mut dec_blocks: Vec<Block<u32>> = vec![];
+        let init_vec = ((message.pop_front().unwrap() as u64) << 32) | message.pop_front().unwrap() as u64;
         
         while let (Some(l), Some(r)) = (message.pop_front(), message.pop_front()) {
             dec_blocks.push(Block { l, r, })

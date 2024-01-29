@@ -8,9 +8,9 @@ impl Packer {
         let padding_required: u8 = (pt.len() % n_bytes as usize) as u8;
     
         if padding_required > 0 {
-            let space: u8 = n_bytes - padding_required;
+            let padding: u8 = n_bytes - padding_required;
             for _ in 0..(n_bytes - padding_required) {
-                pt_vec.push(space);
+                pt_vec.push(padding);
             }
             pt.extend(pt_vec.into_iter());
         } else {
