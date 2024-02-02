@@ -1,14 +1,15 @@
-use crate::{block::Block, packer::PackBytes};
+use crate::errors::CipherError;
 use crate::feistel::FeistelNetwork;
+use crate::{block::Block, packer::PackBytes};
 struct FourByte(u32);
 
 impl Into<(u8, u8, u8, u8)> for FourByte {
     fn into(self) -> (u8, u8, u8, u8) {
         (
-            ((self.0 >> 0) & 0xFF) as u8, 
-            ((self.0 >> 8) & 0xFF) as u8, 
-            ((self.0 >> 16) & 0xFF) as u8, 
-            ((self.0 >> 24) & 0xFF) as u8, 
+            ((self.0 >> 0) & 0xFF) as u8,
+            ((self.0 >> 8) & 0xFF) as u8,
+            ((self.0 >> 16) & 0xFF) as u8,
+            ((self.0 >> 24) & 0xFF) as u8,
         )
     }
 }
@@ -190,14 +191,20 @@ impl Blowfish {
     }
 
     pub fn initialize<P: PackBytes<u32>>(mut key: Vec<u8>) -> Self {
-        if key.len() < 4 || key.len() > 56 {
-            panic!("Key must be between 4 and 56 bytes. Got {} bytes.", key.len());
-        } 
+        match Self::validate_key(&key) {
+            Ok(_) => (),
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(0)
+            }
+        }
+
         let mut boxes: Blowfish = Blowfish::boxes();
         let mut key_bytes_u32: Vec<u32> = vec![];
         for b in key.chunks(4) {
             key_bytes_u32.push(P::u8s_to_subblock(b))
         }
+        key.clear();
 
         // Base permutation of P box values
         for i in 0..18 {
@@ -213,13 +220,23 @@ impl Blowfish {
             boxes.p[i] = zero_block.l;
             boxes.p[i + 1] = zero_block.r;
         }
-        
+
         for i in 0..4 {
             boxes.permute(&mut zero_block, i);
         }
 
-        key.clear();
-        return boxes;   
+        return boxes;
+    }
+
+    fn validate_key(key: &Vec<u8>) -> Result<u8, CipherError> {
+        if key.len() < 4 || key.len() > 56 {
+            Err(CipherError::KeyLen(format!(
+                "Key must be between 4 and 56 characters. Got {} characters.",
+                key.len()
+            )))
+        } else {
+            Ok(0)
+        }
     }
 
     fn round(&self, sub_block: u32) -> u32 {
@@ -251,14 +268,14 @@ impl Blowfish {
             block.r ^= self.round(block.l);
             (block.l, block.r) = (block.r, block.l);
         }
-        
+
         // undo last swap
         (block.l, block.r) = (block.r, block.l);
 
         block.r ^= self.p[16];
         block.l ^= self.p[17];
     }
-    
+
     fn get_s(&self, i: usize) -> [u32; 256] {
         match i {
             0 => self.s1,
@@ -271,10 +288,18 @@ impl Blowfish {
 
     fn set_s(&mut self, i: usize, s: [u32; 256]) {
         match i {
-            0 => { self.s1 = s; },
-            1 => { self.s2 = s; },
-            2 => { self.s3 = s; },
-            3 => { self.s4 = s; },
+            0 => {
+                self.s1 = s;
+            }
+            1 => {
+                self.s2 = s;
+            }
+            2 => {
+                self.s3 = s;
+            }
+            3 => {
+                self.s4 = s;
+            }
             _ => panic!(),
         }
     }
@@ -299,4 +324,3 @@ impl FeistelNetwork for Blowfish {
         self.reverse_p_box()
     }
 }
-

@@ -30,19 +30,6 @@ impl ModeOfOperation for CBC {
             boxes.run(&mut enc_blocks[idx]);
         }
 
-
-        // let mut windows = enc_blocks.windows(2);
-        // enc_blocks[0].cbc_mode_xor(init_vec);
-        // boxes.blowfish_feistel(&mut enc_blocks[0]);
-        
-        // windows.next(); // First block is handled above so advance the iterator before looping.
-
-        // while let Some(&[block_0, mut block_1]) = windows.next() {
-        //     let ct = block_0.full_block();
-        //     block_1.cbc_mode_xor(ct);
-        //     boxes.blowfish_feistel(&mut block_1);
-        // }
-
         return enc_blocks;
     }
 
