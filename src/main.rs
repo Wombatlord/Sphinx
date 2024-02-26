@@ -10,6 +10,8 @@ mod mode_of_operation;
 mod errors;
 
 
+use errors::CipherError;
+use io::output_to_file;
 use packer::Packer;
 use clap::Parser;
 use cli::Args;
@@ -33,8 +35,8 @@ fn main() {
     let (path, encrypt_msg) = match (args.encrypt, args.decrypt) {
         (Some(p), None) => (p, true), 
         (None, Some(p)) => (p, false),
-        (Some(_), Some(_)) => {eprintln!("{}Encrypt and Decrypt are mutually exclusive.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(0)},
-        (None, None) => {eprintln!("{}No Encryption or Decryption selected. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(0)},
+        (Some(_), Some(_)) => {eprintln!("{}Encrypt and Decrypt are mutually exclusive.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
+        (None, None) => {eprintln!("{}No Encryption or Decryption selected. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
     };
 
     let prng = ChaCha20Core::from_entropy();
@@ -44,22 +46,35 @@ fn main() {
     let key = args.key.as_bytes().to_vec();
     let (ecb, cbc) = (ECB{}, CBC { init_vec: iv });
     match (args.mode, encrypt_msg) {
-        (0, true) => enc(Cipher::<ECB, Blowfish>(ecb, Blowfish::initialize::<Packer>(key)), &path),
-        (1, true) => enc(Cipher::<CBC, Blowfish>(cbc, Blowfish::initialize::<Packer>(key)), &path),
-        (0, false) => dec(Cipher::<ECB, Blowfish>(ecb, Blowfish::initialize::<Packer>(key)), &path),
-        (1, false) => dec(Cipher::<CBC, Blowfish>(cbc, Blowfish::initialize::<Packer>(key)), &path),
-        _ => {eprintln!("{}Bad Mode Selection. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(0)},
+        (0, true) => encode_file(Cipher::<ECB, Blowfish>(ecb, Blowfish::initialize::<Packer>(key)), &path),
+        (1, true) => encode_file(Cipher::<CBC, Blowfish>(cbc, Blowfish::initialize::<Packer>(key)), &path),
+        (0, false) => decode_file(Cipher::<ECB, Blowfish>(ecb, Blowfish::initialize::<Packer>(key)), &path),
+        (1, false) => decode_file(Cipher::<CBC, Blowfish>(cbc, Blowfish::initialize::<Packer>(key)), &path),
+        _ => {eprintln!("{}Bad Mode Selection. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
     }
-
 }
 
-
-fn enc(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, path: &str) {
+fn encode_file(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, path: &str) {
     let msg = cipher.parse::<Packer>(path);
-    cipher.encrypt::<Packer>(msg);
+    output_to_file(enc(cipher, msg), "encrypted_file");
 }
 
-fn dec(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, path: &str) {
+fn enc(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) ->  Vec<u8>  {
+    cipher.encrypt::<Packer>(data)
+}
+
+fn decode_file(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, path: &str) {
     let msg = cipher.parse::<Packer>(path);
-    cipher.decrypt::<Packer>(msg);
+    match dec(cipher, msg) {
+        Ok(data) => {
+            output_to_file(data, path)
+        },
+        Err(e) => {
+            eprintln!("Failed to decrypt: {e}");
+        }
+    }
+}
+
+fn dec(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
+    cipher.decrypt::<Packer>(data)
 }

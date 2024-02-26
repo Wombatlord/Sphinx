@@ -195,7 +195,7 @@ impl Blowfish {
             Ok(_) => (),
             Err(e) => {
                 eprintln!("{}", e);
-                std::process::exit(0)
+                std::process::exit(1)
             }
         }
 

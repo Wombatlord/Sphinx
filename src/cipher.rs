@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::{io::output_to_file, packer::{PackBytes, Packer}, mode_of_operation::ModeOfOperation, feistel::FeistelNetwork};
+use crate::{errors::CipherError, feistel::FeistelNetwork, mode_of_operation::ModeOfOperation, packer::{PackBytes, Packer}};
 
 
 #[derive(Debug, Clone, Copy)]
@@ -23,7 +23,7 @@ impl<M, F> Cipher<M, F> where
         return contents;
     }
 
-    pub fn encrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) {
+    pub fn encrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) -> Vec<u8> {
         let padded: Vec<u8> = Packer::pad_bytes(message, 8);
         
         let u32_encoded = P::u8s_to_vecdeque(padded);
@@ -34,10 +34,10 @@ impl<M, F> Cipher<M, F> where
         for b in blocks {
             enc_bytes.extend(b.to_bytes())
         }
-        output_to_file(enc_bytes, "encrypted_file");
+        return enc_bytes;
     }
 
-    pub fn decrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) {
+    pub fn decrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let u32_encoded = P::u8s_to_vecdeque(message);
         
         let blocks = self.0.decrypt(u32_encoded, &self.1);
@@ -47,9 +47,6 @@ impl<M, F> Cipher<M, F> where
         for b in blocks {
             dec_bytes.extend(b.to_bytes())
         }
-        match Packer::strip_padding_vec(dec_bytes) {
-            Ok(v) => output_to_file(v, "decrypted_file"),
-            Err(e) => eprintln!("{}", e) 
-        }
+        Packer::strip_padding_vec(dec_bytes)
     }
 }
