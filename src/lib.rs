@@ -25,19 +25,27 @@ pub mod prelude {
         cipher.decrypt::<Packer>(data)
     }
 
-    pub fn ecb_encode(key: Vec<u8>, data: Vec<u8>) -> Vec<u8> {
-        enc(Cipher::<ECB, Blowfish>(ECB, Blowfish::initialize::<Packer>(key)), data)
+    pub fn ecb_encode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
+        let blowfish = Blowfish::initialize::<Packer>(key)?;
+        
+        Ok(enc(Cipher::<ECB, Blowfish>(ECB, blowfish), data))
     }
     
     pub fn ecb_decode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
-        dec(Cipher::<ECB, Blowfish>(ECB, Blowfish::initialize::<Packer>(key)), data)
+        let blowfish = Blowfish::initialize::<Packer>(key)?;
+        
+        dec(Cipher::<ECB, Blowfish>(ECB, blowfish), data)
     }
     
-    pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Vec<u8> {
-        enc(Cipher::<CBC, Blowfish>(CBC{init_vec}, Blowfish::initialize::<Packer>(key)), data)
+    pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
+        let blowfish = Blowfish::initialize::<Packer>(key)?;
+        
+        Ok(enc(Cipher::<CBC, Blowfish>(CBC{init_vec}, blowfish), data))
     }
     
     pub fn cbc_decode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
-        dec(Cipher::<CBC, Blowfish>(CBC{init_vec}, Blowfish::initialize::<Packer>(key)), data)
+        let blowfish = Blowfish::initialize::<Packer>(key)?;
+        
+        dec(Cipher::<CBC, Blowfish>(CBC{init_vec}, blowfish), data)
     }
 }

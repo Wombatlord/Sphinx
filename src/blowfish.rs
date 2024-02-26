@@ -190,14 +190,13 @@ impl Blowfish {
         };
     }
 
-    pub fn initialize<P: PackBytes<u32>>(mut key: Vec<u8>) -> Self {
+    pub fn initialize<P: PackBytes<u32>>(mut key: Vec<u8>) -> Result<Self, CipherError> {
         match Self::validate_key(&key) {
-            Ok(_) => (),
+            Ok(_) => {},
             Err(e) => {
-                eprintln!("{}", e);
-                std::process::exit(1)
+                return Err(e);
             }
-        }
+        };
 
         let mut boxes: Blowfish = Blowfish::boxes();
         let mut key_bytes_u32: Vec<u32> = vec![];
@@ -225,17 +224,17 @@ impl Blowfish {
             boxes.permute(&mut zero_block, i);
         }
 
-        return boxes;
+        return Ok(boxes);
     }
 
-    fn validate_key(key: &Vec<u8>) -> Result<u8, CipherError> {
+    fn validate_key(key: &Vec<u8>) -> Result<(), CipherError> {
         if key.len() < 4 || key.len() > 56 {
             Err(CipherError::KeyLen(format!(
                 "Key must be between 4 and 56 characters. Got {} characters.",
                 key.len()
             )))
         } else {
-            Ok(0)
+            Ok(())
         }
     }
 

@@ -45,11 +45,18 @@ fn main() {
 
     let key = args.key.as_bytes().to_vec();
     let (ecb, cbc) = (ECB{}, CBC { init_vec: iv });
+    let blowfish = match Blowfish::initialize::<Packer>(key) {
+        Ok(bf) => bf,
+        Err(e) => {
+            eprintln!("Failed: {e}");
+            return;
+        }
+    };
     match (args.mode, encrypt_msg) {
-        (0, true) => encode_file(Cipher::<ECB, Blowfish>(ecb, Blowfish::initialize::<Packer>(key)), &path),
-        (1, true) => encode_file(Cipher::<CBC, Blowfish>(cbc, Blowfish::initialize::<Packer>(key)), &path),
-        (0, false) => decode_file(Cipher::<ECB, Blowfish>(ecb, Blowfish::initialize::<Packer>(key)), &path),
-        (1, false) => decode_file(Cipher::<CBC, Blowfish>(cbc, Blowfish::initialize::<Packer>(key)), &path),
+        (0, true) => encode_file(Cipher::<ECB, Blowfish>(ecb, blowfish), &path),
+        (1, true) => encode_file(Cipher::<CBC, Blowfish>(cbc, blowfish), &path),
+        (0, false) => decode_file(Cipher::<ECB, Blowfish>(ecb, blowfish), &path),
+        (1, false) => decode_file(Cipher::<CBC, Blowfish>(cbc, blowfish), &path),
         _ => {eprintln!("{}Bad Mode Selection. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
     }
 }
