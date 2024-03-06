@@ -8,10 +8,10 @@ impl Packer {
     pub fn pad_bytes<const MAX_PADDING: u8>(mut pt: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let mut pt_vec: Vec<u8> = vec![];
         let padding_required: u8 = pt.len() as u8 % MAX_PADDING;
-    
+
         if padding_required > 0 {
             let Some(padding): Option<u8> = MAX_PADDING.checked_sub(padding_required) else {
-                return Err(CipherError::PaddingError("".into()))
+                return Err(CipherError::PaddingError("".into()));
             };
             for _ in 0..(MAX_PADDING - padding_required) {
                 pt_vec.push(padding);
@@ -22,11 +22,11 @@ impl Packer {
                 pt.push(MAX_PADDING)
             }
         }
-        
+
         Ok(pt)
     }
 
-    pub fn strip_padding_vec(vec: Vec<u8>) -> Result<Vec<u8>, CipherError>  {
+    pub fn strip_padding_vec(vec: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let Some(&padding_indication_byte): Option<&u8> = vec.last() else {
             return Err(CipherError::PaddingError("Recieved empty padding".into()));
         };
@@ -38,14 +38,19 @@ impl Packer {
             return Err(CipherError::PaddingError("Corrupted Cyphertext".into()));
         };
         let (data, padding) = vec.split_at(b);
-        
-        if padding.iter().all(|&bytes| bytes == padding_indication_byte) {
+
+        if padding
+            .iter()
+            .all(|&bytes| bytes == padding_indication_byte)
+        {
             Ok(data.into())
         } else {
-            Err(CipherError::DecryptionError(format!("Decryption Failed, padding: {:?}", padding)))    
+            Err(CipherError::DecryptionError(format!(
+                "Decryption Failed, padding: {:?}",
+                padding
+            )))
         }
     }
-
 }
 
 pub trait PackBytes<T> {
@@ -56,8 +61,14 @@ pub trait PackBytes<T> {
 impl PackBytes<u64> for Packer {
     fn u8s_to_subblock(u8s: &[u8]) -> u64 {
         let mut buf = [0u8; 8];
-        let len = 8.min(u8s.len());
-        buf[..len].copy_from_slice(&u8s[..len]);
+        u8s.iter()
+            .chain(&[0u8; 8])
+            .take(8)
+            .enumerate()
+            .for_each(|(i, &v)| {
+                buf[i] = v;
+            });
+
         u64::from_ne_bytes(buf)
     }
 
@@ -67,7 +78,7 @@ impl PackBytes<u64> for Packer {
         for m in padded.chunks(8) {
             // convert 8 bytes to a u64 representation
             let as64: u64 = Self::u8s_to_subblock(m);
-    
+
             u64_encoded.push_back(as64)
         }
 
