@@ -238,6 +238,10 @@ impl Blowfish {
         }
     }
 
+    fn overflow_add(a: u32, b: u32) -> u32 {
+        ((a as u64 + b as u64) % (u32::MAX as u64)) as u32
+    }
+
     fn round(&self, sub_block: u32) -> u32 {
         let (b0, b1, b2, b3) = FourByte(sub_block).into();
         let s1: u32 = self.s1[b0 as usize];
@@ -245,9 +249,9 @@ impl Blowfish {
         let s3: u32 = self.s3[b2 as usize];
         let s4: u32 = self.s4[b3 as usize];
 
-        let s1_add_s2: u32 = s1 + s2 % (u32::MAX);
+        let s1_add_s2: u32 = Self::overflow_add(s1, s2);
         let xored: u32 = s1_add_s2 ^ s3;
-        let xored_add_s4: u32 = xored + s4 % (2u32.pow(32) - 1);
+        let xored_add_s4: u32 = Self::overflow_add(xored, s4);
 
         return xored_add_s4;
     }
