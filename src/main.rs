@@ -1,42 +1,52 @@
 mod block;
-mod cli;
-mod io;
 mod blowfish;
-mod packer;
 mod cipher;
-mod modes;
-mod feistel;
-mod mode_of_operation;
+mod cli;
 mod errors;
+mod feistel;
+mod io;
+mod mode_of_operation;
+mod modes;
+mod packer;
 
-
-use errors::CipherError;
-use io::output_to_file;
-use packer::Packer;
+use blowfish::Blowfish;
+use cipher::Cipher;
 use clap::Parser;
 use cli::Args;
-use cipher::Cipher;
-use blowfish::Blowfish;
-use mode_of_operation::ModeOfOperation;
+use errors::CipherError;
 use feistel::FeistelNetwork;
+use io::output_to_file;
+use mode_of_operation::ModeOfOperation;
 use modes::{CBC, ECB};
+use packer::Packer;
 
-
-use rand::rngs::OsRng;
-use rand::rngs::adapter::ReseedingRng;
 use rand::prelude::*;
+use rand::rngs::adapter::ReseedingRng;
+use rand::rngs::OsRng;
 use rand_chacha::ChaCha20Core;
 
 use crate::errors::rgb_string;
 
-fn main() {
+fn main() -> Result<(), CipherError> {
     let args = Args::parse();
 
     let (path, encrypt_msg) = match (args.encrypt, args.decrypt) {
-        (Some(p), None) => (p, true), 
+        (Some(p), None) => (p, true),
         (None, Some(p)) => (p, false),
-        (Some(_), Some(_)) => {eprintln!("{}Encrypt and Decrypt are mutually exclusive.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
-        (None, None) => {eprintln!("{}No Encryption or Decryption selected. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
+        (Some(_), Some(_)) => {
+            eprintln!(
+                "{}Encrypt and Decrypt are mutually exclusive.\x1b[0m",
+                rgb_string(200, 200, 0)
+            );
+            std::process::exit(1)
+        }
+        (None, None) => {
+            eprintln!(
+                "{}No Encryption or Decryption selected. See --help.\x1b[0m",
+                rgb_string(200, 200, 0)
+            );
+            std::process::exit(1)
+        }
     };
 
     let prng = ChaCha20Core::from_entropy();
@@ -44,44 +54,53 @@ fn main() {
     let iv = reseeding_rng.gen::<u64>();
 
     let key = args.key.as_bytes().to_vec();
-    let (ecb, cbc) = (ECB{}, CBC { init_vec: iv });
-    let blowfish = match Blowfish::initialize::<Packer>(key) {
-        Ok(bf) => bf,
-        Err(e) => {
-            eprintln!("Failed: {e}");
-            return;
-        }
-    };
+    let (ecb, cbc) = (ECB {}, CBC { init_vec: iv });
+    let blowfish = Blowfish::initialize::<Packer>(key)?;
     match (args.mode, encrypt_msg) {
         (0, true) => encode_file(Cipher::<ECB, Blowfish>(ecb, blowfish), &path),
         (1, true) => encode_file(Cipher::<CBC, Blowfish>(cbc, blowfish), &path),
         (0, false) => decode_file(Cipher::<ECB, Blowfish>(ecb, blowfish), &path),
         (1, false) => decode_file(Cipher::<CBC, Blowfish>(cbc, blowfish), &path),
-        _ => {eprintln!("{}Bad Mode Selection. See --help.\x1b[0m", rgb_string(200, 200, 0)); std::process::exit(1)},
-    }
-}
-
-fn encode_file(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, path: &str) {
-    let msg = cipher.parse::<Packer>(path);
-    output_to_file(enc(cipher, msg), "encrypted_file");
-}
-
-fn enc(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) ->  Vec<u8>  {
-    cipher.encrypt::<Packer>(data)
-}
-
-fn decode_file(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, path: &str) {
-    let msg = cipher.parse::<Packer>(path);
-    match dec(cipher, msg) {
-        Ok(data) => {
-            output_to_file(data, path)
-        },
-        Err(e) => {
-            eprintln!("Failed to decrypt: {e}");
+        _ => {
+            eprintln!(
+                "{}Bad Mode Selection. See --help.\x1b[0m",
+                rgb_string(200, 200, 0)
+            );
+            std::process::exit(1)
         }
     }
 }
 
-fn dec(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
+fn encode_file(
+    cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>,
+    path: &str,
+) -> Result<(), CipherError> {
+    let msg = cipher.parse::<Packer>(path);
+    let encoded = enc(cipher, msg)?;
+    output_to_file(encoded, "encrypted_file");
+    Ok(())
+}
+
+fn enc(
+    cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>,
+    data: Vec<u8>,
+) -> Result<Vec<u8>, CipherError> {
+    cipher.encrypt::<Packer>(data)
+}
+
+fn decode_file(
+    cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>,
+    path: &str,
+) -> Result<(), CipherError> {
+    let msg = cipher.parse::<Packer>(path);
+    let decoded = dec(cipher, msg)?;
+    output_to_file(decoded, path);
+    Ok(())
+}
+
+fn dec(
+    cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>,
+    data: Vec<u8>,
+) -> Result<Vec<u8>, CipherError> {
     cipher.decrypt::<Packer>(data)
 }

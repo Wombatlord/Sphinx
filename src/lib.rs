@@ -14,7 +14,7 @@ pub mod prelude {
         blowfish::Blowfish, cipher::Cipher, errors::CipherError, feistel::FeistelNetwork, mode_of_operation::ModeOfOperation, modes::{CBC, ECB}, packer::Packer
     };
 
-    fn enc(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) -> Vec<u8> {
+    fn enc(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         cipher.encrypt::<Packer>(data)
     }
 
@@ -28,7 +28,7 @@ pub mod prelude {
     pub fn ecb_encode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
         
-        Ok(enc(Cipher::<ECB, Blowfish>(ECB, blowfish), data))
+        enc(Cipher::<ECB, Blowfish>(ECB, blowfish), data)
     }
     
     pub fn ecb_decode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
@@ -40,7 +40,7 @@ pub mod prelude {
     pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
         
-        Ok(enc(Cipher::<CBC, Blowfish>(CBC{init_vec}, blowfish), data))
+        enc(Cipher::<CBC, Blowfish>(CBC{init_vec}, blowfish), data)
     }
     
     pub fn cbc_decode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
@@ -73,11 +73,11 @@ pub mod prelude {
             let data: Vec<u8> = FIXTURE_DATA.as_bytes().into();
 
             let maybe_encrypted = ecb_encode(key.clone(), data.clone());
-            assert!(maybe_encrypted.is_ok());
+            assert!(maybe_encrypted.is_ok(), "{maybe_encrypted:?}");
             let enc = maybe_encrypted.unwrap();
 
             let maybe_decrypted = ecb_decode(key, enc.clone());
-            assert!(maybe_decrypted.is_ok());
+            assert!(maybe_decrypted.is_ok(), "{maybe_decrypted:?}");
 
             let dec = maybe_decrypted.unwrap();
             
@@ -92,11 +92,11 @@ pub mod prelude {
             let data: Vec<u8> = FIXTURE_DATA.as_bytes().into();
 
             let maybe_encrypted = cbc_encode(key.clone(), data.clone(), init_vec.clone());
-            assert!(maybe_encrypted.is_ok());
+            assert!(maybe_encrypted.is_ok(), "{maybe_encrypted:?}");
             let enc = maybe_encrypted.unwrap();
 
             let maybe_decrypted = cbc_decode(key, enc.clone(), init_vec);
-            assert!(maybe_decrypted.is_ok());
+            assert!(maybe_decrypted.is_ok(), "{maybe_decrypted:?}");
 
             let dec = maybe_decrypted.unwrap();
             

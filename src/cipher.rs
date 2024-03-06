@@ -23,8 +23,8 @@ impl<M, F> Cipher<M, F> where
         return contents;
     }
 
-    pub fn encrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) -> Vec<u8> {
-        let padded: Vec<u8> = Packer::pad_bytes(message, 8);
+    pub fn encrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) -> Result<Vec<u8>, CipherError> {
+        let padded: Vec<u8> = Packer::pad_bytes::<8>(message)?;
         
         let u32_encoded = P::u8s_to_vecdeque(padded);
 
@@ -34,7 +34,7 @@ impl<M, F> Cipher<M, F> where
         for b in blocks {
             enc_bytes.extend(b.to_bytes())
         }
-        return enc_bytes;
+        return Ok(enc_bytes);
     }
 
     pub fn decrypt<P: PackBytes<u32>>(&self, message: Vec<u8>) -> Result<Vec<u8>, CipherError> {

@@ -5,34 +5,44 @@ use crate::errors::CipherError;
 pub struct Packer;
 
 impl Packer {
-    pub fn pad_bytes(mut pt: Vec<u8>, n_bytes: u8) -> Vec<u8> {
+    pub fn pad_bytes<const MAX_PADDING: u8>(mut pt: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let mut pt_vec: Vec<u8> = vec![];
-        let padding_required: u8 = (pt.len() % n_bytes as usize) as u8;
+        let padding_required: u8 = pt.len() as u8 % MAX_PADDING;
     
         if padding_required > 0 {
-            let padding: u8 = n_bytes - padding_required;
-            for _ in 0..(n_bytes - padding_required) {
+            let Some(padding): Option<u8> = MAX_PADDING.checked_sub(padding_required) else {
+                return Err(CipherError::PaddingError("".into()))
+            };
+            for _ in 0..(MAX_PADDING - padding_required) {
                 pt_vec.push(padding);
             }
             pt.extend(pt_vec.into_iter());
         } else {
-            for _ in 0..n_bytes {
-                pt.push(n_bytes)
+            for _ in 0..MAX_PADDING {
+                pt.push(MAX_PADDING)
             }
         }
-        return pt;
+        
+        Ok(pt)
     }
 
-    pub fn strip_padding_vec(mut vec: Vec<u8>) -> Result<Vec<u8>, CipherError>  {
-        let padding_indication_byte = vec[vec.len() - 1];
-        let b = vec.len() - padding_indication_byte as usize;
-        let slice = &vec[b..];
+    pub fn strip_padding_vec(vec: Vec<u8>) -> Result<Vec<u8>, CipherError>  {
+        let Some(&padding_indication_byte): Option<&u8> = vec.last() else {
+            return Err(CipherError::PaddingError("Recieved empty padding".into()));
+        };
+        let pad_width = padding_indication_byte as usize;
+        if pad_width > vec.len() {
+            return Err(CipherError::PaddingError("Corrupted Cyphertext".into()));
+        }
+        let Some(b) = vec.len().checked_sub(pad_width) else {
+            return Err(CipherError::PaddingError("Corrupted Cyphertext".into()));
+        };
+        let (data, padding) = vec.split_at(b);
         
-        if slice.iter().all(|&bytes| bytes == padding_indication_byte) {
-            vec = vec.split_at(b).0.into();
-            Ok(vec)
+        if padding.iter().all(|&bytes| bytes == padding_indication_byte) {
+            Ok(data.into())
         } else {
-            Err(CipherError::DecryptionError("Decryption Failed".to_string()))    
+            Err(CipherError::DecryptionError(format!("Decryption Failed, padding: {:?}", padding)))    
         }
     }
 
