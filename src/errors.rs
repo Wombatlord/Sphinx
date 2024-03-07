@@ -1,15 +1,19 @@
 use std::fmt::{self, Display};
 
-
-pub fn rgb_string(r:u8, g:u8, b:u8) -> String {
-   format!("\x1b[38;2;{};{};{}m", r.to_string(), g.to_string(), b.to_string())
+pub fn rgb_string(r: u8, g: u8, b: u8) -> String {
+    format!(
+        "\x1b[38;2;{};{};{}m",
+        r.to_string(),
+        g.to_string(),
+        b.to_string()
+    )
 }
 
 #[derive(Debug)]
 pub enum CipherError {
     DecryptionError(String),
     KeyLen(String),
-    PaddingError(String)
+    PaddingError(String),
 }
 
 impl Display for CipherError {

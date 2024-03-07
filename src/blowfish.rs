@@ -192,7 +192,7 @@ impl Blowfish {
 
     pub fn initialize<P: PackBytes<u32>>(mut key: Vec<u8>) -> Result<Self, CipherError> {
         match Self::validate_key(&key) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 return Err(e);
             }

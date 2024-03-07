@@ -12,7 +12,7 @@ impl Block<u32> {
         v.extend(bytes_of(&self.l));
         v.extend(bytes_of(&self.r));
 
-        return v
+        return v;
     }
 
     pub fn full_block(&self) -> u64 {
@@ -27,7 +27,7 @@ impl Block<u32> {
         let r = self.r as u64;
         let mut p = (l << 32) | r;
         p ^= xor_with;
-        self.l = ((p & u64::MAX << 32) >> 32)as u32;
+        self.l = ((p & u64::MAX << 32) >> 32) as u32;
         self.r = (p & u64::MAX) as u32;
     }
 }

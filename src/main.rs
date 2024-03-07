@@ -54,7 +54,7 @@ fn main() -> Result<(), CipherError> {
     let iv = reseeding_rng.gen::<u64>();
 
     let key = args.key.as_bytes().to_vec();
-    let (ecb, cbc) = (ECB {}, CBC { init_vec: iv });
+    let (ecb, cbc) = (ECB {}, CBC { init_vec: Some(iv) });
     let blowfish = Blowfish::initialize::<Packer>(key)?;
     match (args.mode, encrypt_msg) {
         (0, true) => encode_file(Cipher::<ECB, Blowfish>(ecb, blowfish), &path),

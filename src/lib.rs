@@ -11,10 +11,19 @@ pub mod packer;
 
 pub mod prelude {
     use crate::{
-        blowfish::Blowfish, cipher::Cipher, errors::CipherError, feistel::FeistelNetwork, mode_of_operation::ModeOfOperation, modes::{CBC, ECB}, packer::Packer
+        blowfish::Blowfish,
+        cipher::Cipher,
+        errors::CipherError,
+        feistel::FeistelNetwork,
+        mode_of_operation::ModeOfOperation,
+        modes::{CBC, ECB},
+        packer::Packer,
     };
 
-    fn enc(cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
+    fn enc(
+        cipher: Cipher<impl ModeOfOperation, impl FeistelNetwork>,
+        data: Vec<u8>,
+    ) -> Result<Vec<u8>, CipherError> {
         cipher.encrypt::<Packer>(data)
     }
 
@@ -27,26 +36,37 @@ pub mod prelude {
 
     pub fn ecb_encode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
-        
+
         enc(Cipher::<ECB, Blowfish>(ECB, blowfish), data)
     }
-    
+
     pub fn ecb_decode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
-        
+
         dec(Cipher::<ECB, Blowfish>(ECB, blowfish), data)
     }
-    
+
     pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
-        
-        enc(Cipher::<CBC, Blowfish>(CBC{init_vec}, blowfish), data)
+
+        enc(
+            Cipher::<CBC, Blowfish>(
+                CBC {
+                    init_vec: Some(init_vec),
+                },
+                blowfish,
+            ),
+            data,
+        )
     }
-    
-    pub fn cbc_decode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
+
+    pub fn cbc_decode(key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
-        
-        dec(Cipher::<CBC, Blowfish>(CBC{init_vec}, blowfish), data)
+
+        dec(
+            Cipher::<CBC, Blowfish>(CBC { init_vec: None }, blowfish),
+            data,
+        )
     }
 
     #[cfg(test)]
@@ -64,7 +84,7 @@ pub mod prelude {
                 \:\__\             \::/  /                                        /:/  /   
                  \/__/              \/__/                                         \/__/    
         ";
-        
+
         use super::*;
         #[test]
 
@@ -80,11 +100,11 @@ pub mod prelude {
             assert!(maybe_decrypted.is_ok(), "{maybe_decrypted:?}");
 
             let dec = maybe_decrypted.unwrap();
-            
+
             assert_ne!(enc, dec);
             assert_eq!(data, dec);
         }
-        
+
         #[test]
         fn test_cbc_round_trip() {
             let key = vec![0xDE, 0xAD, 0xBE, 0xEF];
@@ -95,14 +115,13 @@ pub mod prelude {
             assert!(maybe_encrypted.is_ok(), "{maybe_encrypted:?}");
             let enc = maybe_encrypted.unwrap();
 
-            let maybe_decrypted = cbc_decode(key, enc.clone(), init_vec);
+            let maybe_decrypted = cbc_decode(key, enc.clone());
             assert!(maybe_decrypted.is_ok(), "{maybe_decrypted:?}");
 
             let dec = maybe_decrypted.unwrap();
-            
+
             assert_ne!(enc, dec);
             assert_eq!(data, dec);
         }
     }
 }
-

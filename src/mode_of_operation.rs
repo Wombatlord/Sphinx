@@ -1,4 +1,4 @@
-use crate::{feistel::FeistelNetwork, block::Block};
+use crate::{block::Block, feistel::FeistelNetwork};
 use std::collections::VecDeque;
 
 pub trait ModeOfOperation {

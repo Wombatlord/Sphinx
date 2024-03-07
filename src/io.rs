@@ -9,6 +9,5 @@ pub fn output_to_file(blocks: Vec<u8>, path: &str) {
         .open(path)
         .expect("oh boy");
 
-
     file.write_all(&blocks).expect("uh oh spaghettios");
 }

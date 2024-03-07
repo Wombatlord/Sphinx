@@ -27,7 +27,7 @@ pub struct Args {
     #[arg(short, long)]
     pub parallelize: bool,
 
-    #[arg(short, long="mode", value_name="mode of operation")]
+    #[arg(short, long = "mode", value_name = "mode of operation")]
     pub mode: u8,
 
     #[arg(short, long, value_name = "secret key")]
