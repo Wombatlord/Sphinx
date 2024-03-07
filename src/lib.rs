@@ -57,9 +57,14 @@ pub mod prelude {
         Box::new(g)
     }
 
-    pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, mut rng: Box<IVGen>) -> Result<Vec<u8>, CipherError> {
+    pub fn get_rng() -> ReseedingRng<ChaCha20Core, OsRng> {
+        let prng = ChaCha20Core::from_entropy();
+        ReseedingRng::new(prng, 0, OsRng)
+    }
+
+    pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, mut rng: ReseedingRng<ChaCha20Core, OsRng>) -> Result<Vec<u8>, CipherError> {
         let blowfish = Blowfish::initialize::<Packer>(key)?;
-        let iv = rng();
+        let iv = rng.gen::<u64>();
         
         enc(
             Cipher::<CBC, Blowfish>(
@@ -121,7 +126,7 @@ pub mod prelude {
         fn test_cbc_round_trip() {
             let key = vec![0xDE, 0xAD, 0xBE, 0xEF];
             let data: Vec<u8> = FIXTURE_DATA.as_bytes().into();
-            let rng = iv_generator();
+            let rng = get_rng();
             let maybe_encrypted = cbc_encode(key.clone(), data.clone(), rng);
             assert!(maybe_encrypted.is_ok(), "{maybe_encrypted:?}");
             let enc = maybe_encrypted.unwrap();
