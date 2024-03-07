@@ -49,14 +49,6 @@ pub mod prelude {
         dec(Cipher::<ECB, Blowfish>(ECB, blowfish), data)
     }
 
-    pub type IVGen = dyn FnMut() -> u64;
-    pub fn iv_generator() -> Box<IVGen> {
-        let prng = ChaCha20Core::from_entropy();
-        let mut reseeding_rng = ReseedingRng::new(prng, 0, OsRng);
-        let g = move || reseeding_rng.gen::<u64>();
-        Box::new(g)
-    }
-
     pub fn get_rng() -> ReseedingRng<ChaCha20Core, OsRng> {
         let prng = ChaCha20Core::from_entropy();
         ReseedingRng::new(prng, 0, OsRng)
