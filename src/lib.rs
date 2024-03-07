@@ -10,6 +10,9 @@ pub mod modes;
 pub mod packer;
 
 pub mod prelude {
+    use rand::{rngs::{adapter::ReseedingRng, OsRng}, Rng, SeedableRng};
+    use rand_chacha::ChaCha20Core;
+
     use crate::{
         blowfish::Blowfish,
         cipher::Cipher,
@@ -46,13 +49,22 @@ pub mod prelude {
         dec(Cipher::<ECB, Blowfish>(ECB, blowfish), data)
     }
 
-    pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, init_vec: u64) -> Result<Vec<u8>, CipherError> {
-        let blowfish = Blowfish::initialize::<Packer>(key)?;
+    type IVGen = dyn FnMut() -> u64;
+    pub fn iv_generator() -> Box<IVGen> {
+        let prng = ChaCha20Core::from_entropy();
+        let mut reseeding_rng = ReseedingRng::new(prng, 0, OsRng);
+        let g = move || reseeding_rng.gen::<u64>();
+        Box::new(g)
+    }
 
+    pub fn cbc_encode(key: Vec<u8>, data: Vec<u8>, mut rng: Box<IVGen>) -> Result<Vec<u8>, CipherError> {
+        let blowfish = Blowfish::initialize::<Packer>(key)?;
+        let iv = rng();
+        
         enc(
             Cipher::<CBC, Blowfish>(
                 CBC {
-                    init_vec: Some(init_vec),
+                    init_vec: Some(iv),
                 },
                 blowfish,
             ),
@@ -108,10 +120,9 @@ pub mod prelude {
         #[test]
         fn test_cbc_round_trip() {
             let key = vec![0xDE, 0xAD, 0xBE, 0xEF];
-            let init_vec: u64 = 0;
             let data: Vec<u8> = FIXTURE_DATA.as_bytes().into();
-
-            let maybe_encrypted = cbc_encode(key.clone(), data.clone(), init_vec.clone());
+            let rng = iv_generator();
+            let maybe_encrypted = cbc_encode(key.clone(), data.clone(), rng);
             assert!(maybe_encrypted.is_ok(), "{maybe_encrypted:?}");
             let enc = maybe_encrypted.unwrap();
 
